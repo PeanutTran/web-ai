@@ -58,7 +58,7 @@ const AnalysisLayout = React.memo(
                         />
                     </div>
                     {selectionButtons && (
-                        <div className="flex gap-6 mt-3">
+                        <div className="flex gap-6 mt-3 flex-1 max-h-[100px]">
                             {selectionButtons}
                         </div>
                     )}

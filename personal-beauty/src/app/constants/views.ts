@@ -8,7 +8,7 @@ export const VIEWS = {
     PERSONAL_BODY_TYPE: "personal-body-type",
   } as const;
   
-  export type ViewType = keyof typeof VIEWS;
+  export type ViewType = (typeof VIEWS)[keyof typeof VIEWS];
   
   export const VIEW_LIST: { name: string; view: ViewType }[] = [
     { name: "Personal Color", view: VIEWS.PERSONAL_COLOR },

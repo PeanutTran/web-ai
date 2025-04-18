@@ -58,7 +58,7 @@ const SelectionButton: React.FC<{
 };
 
 export default function PersonalBodyType() {
-  const { setDetectionType, setIsHandDetectionEnabled, isTwoFingersRaised, handData } = useWebcam();
+  const { setIsHandDetectionEnabled, isTwoFingersRaised, handData } = useWebcam();
   const { setOpenHandAction } = useHandControl();
   const [isPoseDetectionActive, setIsPoseDetectionActive] = useState(true);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
@@ -66,11 +66,6 @@ export default function PersonalBodyType() {
   const [twoFingersProgress, setTwoFingersProgress] = useState(0);
   const twoFingersStartTime = useRef<number | null>(null);
   const lastInteractionTime = useRef<number>(Date.now());
-
-  // Thiết lập detection type là "pose"
-  useEffect(() => {
-    setDetectionType("pose");
-  }, [setDetectionType]);
 
   // Tùy chỉnh hành động khi Open Hand
   useEffect(() => {

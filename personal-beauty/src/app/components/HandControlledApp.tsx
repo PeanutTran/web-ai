@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { JSX, useState } from "react";
 import Sidebar from "./Sidebar";
 import { useWebcam } from "../context/WebcamContext";
 import { ViewType, VIEWS } from "../constants/views";
@@ -11,12 +11,12 @@ import { useLoading } from "../context/LoadingContext";
 import { HandControlProvider } from "../context/HandControlContext";
 
 interface HandControlledAppProps {
-  children: React.ReactNode;
+  children: (currentView: ViewType) => JSX.Element;
   onMenuSelect: (view: ViewType) => void;
 }
 
 export default function HandControlledApp({ children, onMenuSelect }: HandControlledAppProps) {
-  const { error: webcamError, handData } = useWebcam();
+  const { error: webcamError, handData, setCurrentView: setCurrentContextView } = useWebcam();
   const { isLoading, setIsLoading } = useLoading();
   const [currentView, setCurrentView] = useState<ViewType>(VIEWS.HOME);
 
@@ -31,6 +31,7 @@ export default function HandControlledApp({ children, onMenuSelect }: HandContro
     if (currentView !== VIEWS.HOME) {
       onMenuSelect(VIEWS.HOME);
       setCurrentView(VIEWS.HOME);
+      setCurrentContextView(VIEWS.HOME);
     }
   };
 

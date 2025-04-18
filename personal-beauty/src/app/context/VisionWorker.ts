@@ -87,7 +87,6 @@ self.onmessage = async (e: MessageEvent) => {
           //console.log(`[VisionWorker] Detection result for ${modelType}:`, results[modelType]);
         }
       }
-
       self.postMessage({ type: "detectionResult", results });
       imageBitmap.close();
     } catch (err) {

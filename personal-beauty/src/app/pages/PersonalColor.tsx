@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 /* eslint-disable react/display-name */
 // src/components/page/PersonalColor.tsx
 
@@ -10,6 +11,7 @@ import AnalysisLayout from "../components/AnalysisLayout";
 import { useWebcam } from "../context/WebcamContext";
 import { useLoading } from "../context/LoadingContext";
 import { useHandControl } from "../context/HandControlContext";
+import { VIEWS } from "../constants/views";
 
 // Ánh xạ vùng và các landmarks tương ứng
 const AREA_LANDMARKS: { [key: string]: number[] } = {
@@ -75,12 +77,8 @@ export default function PersonalColor() {
         stream,
         error: webcamError,
         restartStream,
-        handData,
-        isIndexFingerRaised,
         detectionResults,
         setCurrentView,
-        setIsHandDetectionEnabled,
-        faceResults
     } = useWebcam();
     const { setIsLoading } = useLoading();
     const { toggleHandDetection, isHandDetectionEnabled } = useHandControl();
@@ -114,9 +112,14 @@ export default function PersonalColor() {
         ],
     };
 
+    useEffect(() => {
+        setCurrentView(VIEWS.PERSONAL_COLOR)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const selectionButtons = useMemo(
         () => (
-            <div className="flex flex-col gap-6">
+            <div className="flex gap-6">
                 {areas.map((area) => (
                     <SelectionButton key={area} area={area} selectedArea={selectedArea} setSelectedArea={setSelectedArea} />
                 ))}
@@ -202,12 +205,9 @@ export default function PersonalColor() {
 
         const max = Math.max(r, g, b);
         const min = Math.min(r, g, b);
-        let h = 0,
-            s = 0,
-            v = max;
+        let h = 0;
 
         const d = max - min;
-        s = max === 0 ? 0 : d / max;
 
         if (max === min) {
             h = 0;
@@ -287,12 +287,13 @@ export default function PersonalColor() {
 
                 // Vẽ video
                 ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-
-                if (faceResults && faceResults.faceLandmarks && faceResults.faceLandmarks.length > 0) {
-                    const landmarks = faceResults.faceLandmarks[0];
-
+                
+                if (detectionResults && detectionResults.face?.faceLandmarks && detectionResults.face?.faceLandmarks.length > 0) {
+                    const landmarks = detectionResults.face?.faceLandmarks[0];
+                    
                     // Phân tích tông màu từ vùng mặt
                     const faceLandmarks = AREA_LANDMARKS["face"];
+                    
                     if (landmarks && faceLandmarks) {
                         // Tính vùng bao quanh các landmarks của mặt
                         const xs = faceLandmarks.map((index) => landmarks[index]?.x * drawWidth + offsetX).filter((x) => x !== undefined);
@@ -334,7 +335,7 @@ export default function PersonalColor() {
                 cancelAnimationFrame(animationFrameId.current);
             }
         };
-    }, [stream, isVideoReady, faceResults]);
+    }, [stream, isVideoReady, detectionResults]);
 
     return (
         <AnalysisLayout

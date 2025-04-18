@@ -1,7 +1,7 @@
 // src/app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import HandControlledApp from "./components/HandControlledApp";
 import PersonalColor from "./pages/PersonalColor";
 import PersonalBodyType from "./pages/PersonalBodyType";
@@ -13,7 +13,6 @@ import { useLoading } from "./context/LoadingContext";
 
 export default function Home() {
   const { setIsLoading } = useLoading();
-
   const handleMenuSelect = (view: ViewType) => {
     console.log(`[Home] Menu selected: ${view}`);
     if (view === VIEWS.HOME) {

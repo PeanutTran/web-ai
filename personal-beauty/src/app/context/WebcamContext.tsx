@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // src/app/context/WebcamContext.tsx
 
 "use client";
@@ -21,7 +22,10 @@ interface WebcamContextType {
   handData: HandData;
   setIsHandDetectionEnabled: (enabled: boolean) => void;
   isIndexFingerRaised: boolean;
-  isHandDetectionEnabled: boolean; // Thêm để đồng bộ
+  isHandDetectionEnabled: boolean;
+  detectionResults: { [key: string]: any };
+  currentView: string;
+  setCurrentView: (view: any) => void;
 }
 
 const WebcamContext = createContext<WebcamContextType | undefined>(undefined);
@@ -193,7 +197,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     workerRef.current.onmessage = (e: MessageEvent) => {
       const { type, success, error, modelType, results } = e.data;
-
+      console.log(e)
       if (type === "initialized") {
         if (!success) {
           setError(`Failed to initialize ${modelType}: ${error}`);
@@ -210,7 +214,9 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           return;
         }
 
-        // console.log("[WebcamProvider] Detection results received:", results);
+        console.log("[WebcamProvider] Detection results received:", results);
+        console.log(1122, results?.face?.faceLandmarks?.[0]?.[13]);
+
         setDetectionResults(results);
         if (results.hand && results.hand.landmarks && results.hand.landmarks.length > 0) {
           const landmarks = results.hand.landmarks[0];
@@ -302,8 +308,6 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     unusedModels.forEach((modelType) => {
       workerRef.current!.postMessage({ type: "cleanup", data: { modelType } });
     });
-
-    console.log("[WebcamProvider] Model requirements updated for view:", currentView, requiredModels);
   }, [currentView]);
 
 
@@ -446,6 +450,9 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         setIsHandDetectionEnabled,
         isIndexFingerRaised,
         isHandDetectionEnabled, // Truyền ra để đồng bộ
+        currentView,
+        detectionResults,
+        setCurrentView
       }}
     >
       {children}
