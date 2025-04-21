@@ -40,6 +40,7 @@ export default function PersonalColor() {
     const animationFrameId = useRef<number | null>(null);
     const [makeupSuggestion, setMakeupSuggestion] = useState<any | null>(null);
     const [isApplyMakeup, setIsApplyMakeup] = useState(true);
+   const lastDetectTime = useRef(0);
 
     function analyzeFacialFeatures(
         landmarks: NormalizedLandmark[]
@@ -272,13 +273,20 @@ export default function PersonalColor() {
             return true;
         };
 
-        const detect = async () => {
+        const detect = () => {
             // const isVideoReady = await waitForVideoReady();
             // if (!isVideoReady) {
             //     return;
             // }
 
             try {
+                
+                const now = performance.now();
+                if (now - lastDetectTime.current < 120) { // 10 FPS
+                    animationFrameId.current = requestAnimationFrame(detect);
+                    return;
+                }
+                lastDetectTime.current = now;
                 if (detectionResults?.face?.faceLandmarks && detectionResults?.face?.faceLandmarks.length > 0) {
                     const landmarks = detectionResults?.face?.faceLandmarks[0];
                     const features = analyzeFacialFeatures(landmarks);
@@ -307,8 +315,6 @@ export default function PersonalColor() {
                     ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
 
                     detectBlinkWithinTime(landmarks);
-
-                    console.log(isApplyMakeup);
 
                     if (isApplyMakeup) {
                         drawMakeup(
@@ -355,7 +361,6 @@ export default function PersonalColor() {
         width: number,
         height: number
     ) {
-        console.log(1122, landmarks[13]);
         const outerLip = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291];
         const innerLip = [78, 95, 88, 178, 87, 14, 317, 402, 318, 324, 308];
 

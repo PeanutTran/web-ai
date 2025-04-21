@@ -418,7 +418,6 @@ export default function PersonalColor() {
 
                     console.log(isApplyMakeup);
 
-                    if (isApplyMakeup)
                         drawMakeup(
                             ctx,
                             landmarks,

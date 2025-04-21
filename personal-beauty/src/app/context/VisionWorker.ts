@@ -1,6 +1,6 @@
 // src/app/context/VisionWorker.ts
 
-import { HandLandmarker, FaceLandmarker, PoseLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
+import { HandLandmarker, FaceLandmarker, PoseLandmarker, FilesetResolver, ImageSegmenter } from "@mediapipe/tasks-vision";
 
 const models: { [key: string]: any } = {};
 const modelConfigs: { [key: string]: any } = {
@@ -26,6 +26,19 @@ const modelConfigs: { [key: string]: any } = {
       outputFaceBlendshapes: false,
       runningMode: "VIDEO",
       numFaces: 1,
+    },
+  },
+  hair: {
+    class: ImageSegmenter,
+    options: {
+      baseOptions: {
+          modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/image_segmenter/hair_segmenter/float32/1/hair_segmenter.tflite",
+          delegate: "GPU"
+      },
+      runningMode: "VIDEO",
+      outputCategoryMask: true,
+      outputConfidenceMasks: false
     },
   },
   pose: {
@@ -80,13 +93,13 @@ self.onmessage = async (e: MessageEvent) => {
     try {
       const imageBitmap = await createImageBitmap(imageData);
       const results: { [key: string]: any } = {};
-
       for (const modelType of modelTypes) {
         if (models[modelType]) {
           results[modelType] = await models[modelType].detectForVideo(imageBitmap, timestamp);
           //console.log(`[VisionWorker] Detection result for ${modelType}:`, results[modelType]);
         }
       }
+      // console.log(1122, `visionWorker-${results?.face?.faceLandmarks?.[0]?.[13]?.x}`, new Date().getTime(), timestamp);
       self.postMessage({ type: "detectionResult", results });
       imageBitmap.close();
     } catch (err) {

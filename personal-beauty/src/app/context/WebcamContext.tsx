@@ -64,7 +64,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [VIEWS.PERSONAL_COLOR]: ["hand", "face"],
     [VIEWS.PERSONAL_BODY_TYPE]: ["pose"],
     [VIEWS.HOME]: ["hand"],
-    [VIEWS.HAIR_COLOR]: ["face"],
+    [VIEWS.HAIR_COLOR]: ["hand"],
     [VIEWS.PERSONAL_MAKEUP]: ["face"],
     [VIEWS.COSMETIC_SURGERY]: ["face", "pose"],
   };
@@ -213,10 +213,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.log("[WebcamProvider] Detection error:", error);
           return;
         }
-
-        console.log("[WebcamProvider] Detection results received:", results);
-        console.log(1122, results?.face?.faceLandmarks?.[0]?.[13]);
-
+        console.log(1122, `detectionResult-${results?.face?.faceLandmarks?.[0]?.[13]?.x}`, new Date().getTime());
         setDetectionResults(results);
         if (results.hand && results.hand.landmarks && results.hand.landmarks.length > 0) {
           const landmarks = results.hand.landmarks[0];
@@ -358,6 +355,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
             imageData,
             timestamp: now,
             modelTypes,
+            currentView,
           },
         },
         [imageData.data.buffer]
