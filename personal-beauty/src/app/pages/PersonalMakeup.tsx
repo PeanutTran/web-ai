@@ -1,16 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable react-hooks/exhaustive-deps */
 // src/pages/PersonalColor.tsx
 "use client";
 
 import { useState, useEffect, useRef } from "react";
 import {
-    FaceLandmarker,
     NormalizedLandmark,
 } from "@mediapipe/tasks-vision";
 import AnalysisLayout from "../components/AnalysisLayout";
 import { useWebcam } from "../context/WebcamContext";
 import { useLoading } from "../context/LoadingContext"; // Thêm import
-import { useHandControl } from "../context/HandControlContext";
 import { VIEWS } from "../constants/views";
 
 type FacialFeatures = {
@@ -29,7 +28,6 @@ type FacialFeatures = {
 export default function PersonalColor() {
     const { stream, error: webcamError, restartStream, detectionResults, setCurrentView } = useWebcam();
     const { setIsLoading } = useLoading(); // Sử dụng context
-    const { registerElement, unregisterElement } = useHandControl();
     const [error, setError] = useState<string | null>(null);
     const [isVideoReady, setIsVideoReady] = useState(false);
     const [isFaceDetectionActive, setIsFaceDetectionActive] = useState(true); // Thêm trạng thái chế độ
@@ -251,38 +249,11 @@ export default function PersonalColor() {
             return;
         }
 
-        const waitForVideoReady = async () => {
-            let retries = 5;
-            while (retries > 0 && video.readyState < 4) {
-                console.log(
-                    "[PersonalColor] Video not ready, waiting... readyState:",
-                    video.readyState,
-                    "retries left:",
-                    retries
-                );
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-                retries--;
-                if (video.readyState < 4) {
-                    await restartStream();
-                }
-            }
-            if (video.readyState < 4) {
-                setError("Failed to load webcam video for face detection.");
-                return false;
-            }
-            return true;
-        };
-
         const detect = () => {
-            // const isVideoReady = await waitForVideoReady();
-            // if (!isVideoReady) {
-            //     return;
-            // }
-
             try {
                 
                 const now = performance.now();
-                if (now - lastDetectTime.current < 120) { // 10 FPS
+                if (now - lastDetectTime.current < 100) { // 10 FPS
                     animationFrameId.current = requestAnimationFrame(detect);
                     return;
                 }
@@ -316,15 +287,12 @@ export default function PersonalColor() {
 
                     detectBlinkWithinTime(landmarks);
 
-                    if (isApplyMakeup) {
-                        drawMakeup(
-                            ctx,
-                            landmarks,
-                            video.videoWidth,
-                            video.videoHeight
-                        );
-                    }
-
+                    drawMakeup(
+                        ctx,
+                        landmarks,
+                        video.videoWidth,
+                        video.videoHeight
+                    );
 
                     setStatusMessage("ok");
 
