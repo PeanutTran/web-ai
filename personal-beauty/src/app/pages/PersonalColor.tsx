@@ -262,7 +262,7 @@ export default function PersonalColor() {
         const draw = async () => {
             try {
                 const now = performance.now();
-                if (now - lastDetectTime.current < 100) { // 10 FPS
+                if (now - lastDetectTime.current < 33) { // 10 FPS
                     animationFrameId.current = requestAnimationFrame(draw);
                     return;
                 }

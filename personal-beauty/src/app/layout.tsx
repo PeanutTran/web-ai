@@ -17,11 +17,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <WebcamProvider>
-          <LoadingProvider>
+        <LoadingProvider>
+          <WebcamProvider>
             {children}
-          </LoadingProvider>
-        </WebcamProvider>
+          </WebcamProvider>
+        </LoadingProvider>
       </body>
     </html>
   );

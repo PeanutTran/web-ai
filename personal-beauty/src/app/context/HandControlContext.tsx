@@ -66,7 +66,7 @@ export const HandControlProvider: React.FC<HandControlProviderProps> = ({ childr
     setIsHandDetectionEnabled((prev: boolean) => {
       if (prev !== enable) {
         return enable;
-      }    
+      }
       return prev;
     });
   }, [setIsHandDetectionEnabled]);
@@ -187,7 +187,7 @@ export const HandControlProvider: React.FC<HandControlProviderProps> = ({ childr
     const detect = () => {
       const currentHandData = handDataRef.current;
       const now = performance.now();
-      if (now - lastDetectTime.current < 100) {
+      if (now - lastDetectTime.current < 33) {
         animationFrameId.current = requestAnimationFrame(detect);
         return;
       }

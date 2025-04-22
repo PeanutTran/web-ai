@@ -50,7 +50,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const lastLightweightDetectTime = useRef(0);
   const lastPositionBeforeFist = useRef<{ x: number; y: number } | null>(null);
   const smoothPosition = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const ALPHA = 0.3;
+  const ALPHA = 0.6;
   const [handData, setHandData] = useState<HandData>({
     isHandDetected: false,
     cursorPosition: { x: 0, y: 0 },
@@ -213,7 +213,12 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           console.log("[WebcamProvider] Detection error:", error);
           return;
         }
-        console.log(1122, `detectionResult-${results?.face?.faceLandmarks?.[0]?.[13]?.x}`, new Date().getTime());
+
+          // Tính thời gian truyền và nhận (tổng thời gian từ lúc gửi đến lúc nhận)
+          const receiveTime = performance.now();
+          console.log(`====================> [WebcamProvider] Received detection results at: ${receiveTime}ms, total round-trip time: ${(receiveTime - lastDetectTime.current).toFixed(2)}ms`);
+          
+        // console.log("[WebcamProvider] Detection results received:", results);
         setDetectionResults(results);
         if (results.hand && results.hand.landmarks && results.hand.landmarks.length > 0) {
           const landmarks = results.hand.landmarks[0];
@@ -224,12 +229,12 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           // Kích hoạt lại nếu phát hiện tay (không cần đợi ngón trỏ giơ lên)
           if (!isHandDetectionEnabled) {
-            console.log("[WebcamProvider] Hand detected in lightweight mode, enabling hand detection");
+            //console.log("[WebcamProvider] Hand detected in lightweight mode, enabling hand detection");
             setIsHandDetectionEnabled(true);
           }
 
           if (isHandDetectionEnabled) {
-            console.log("[WebcamProvider] Processing detectFull");
+            //console.log("[WebcamProvider] Processing detectFull");
             const { isHandDetected, cursorPosition, isFist, isOpenHand, isIndexRaised: updatedIndexRaised } = detectFull(landmarks);
             setIsIndexFingerRaised(updatedIndexRaised);
             setHandData({
@@ -305,6 +310,8 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     unusedModels.forEach((modelType) => {
       workerRef.current!.postMessage({ type: "cleanup", data: { modelType } });
     });
+
+    //console.log("[WebcamProvider] Model requirements updated for view:", currentView, requiredModels);
   }, [currentView]);
 
 
@@ -322,13 +329,13 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const video = videoRef.current;
     const canvas = document.createElement("canvas");
-    canvas.width = 640;
-    canvas.height = 480;
-    const ctx = canvas.getContext("2d");
+    canvas.width = 320;
+    canvas.height = 240;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
-    const detect = () => {
+    const detect = async () => {
       const now = performance.now();
-      if (now - lastDetectTime.current < 50) { // 20 FPS
+      if (now - lastDetectTime.current < 33) { // 20 FPS
         // 10 FPS
         animationFrameId.current = requestAnimationFrame(detect);
         return;
@@ -346,19 +353,20 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
+      const imageBitmap = await createImageBitmap(imageData);
       const modelTypes = modelRequirements[currentView] || ["hand"];
+
       workerRef.current!.postMessage(
         {
           type: "detect",
           data: {
-            imageData,
+            imageBitmap,
             timestamp: now,
             modelTypes,
             currentView,
           },
         },
-        [imageData.data.buffer]
+        [imageBitmap]
       );
 
       animationFrameId.current = requestAnimationFrame(detect);
@@ -374,68 +382,68 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   }, [stream, currentView, isHandDetectionEnabled]);
 
   // Luồng phát hiện nhẹ (lightweight detection) để kích hoạt lại khi isHandDetectionEnabled = false
-  useEffect(() => {
-    if (!stream || !videoRef.current || !workerRef.current || isHandDetectionEnabled) {
-      console.log("[WebcamProvider] Lightweight detection loop skipped:", {
-        hasStream: !!stream,
-        hasVideoRef: !!videoRef.current,
-        hasWorker: !!workerRef.current,
-        isHandDetectionEnabled,
-      });
-      return;
-    }
+  // useEffect(() => {
+  //   if (!stream || !videoRef.current || !workerRef.current || isHandDetectionEnabled) {
+  //     console.log("[WebcamProvider] Lightweight detection loop skipped:", {
+  //       hasStream: !!stream,
+  //       hasVideoRef: !!videoRef.current,
+  //       hasWorker: !!workerRef.current,
+  //       isHandDetectionEnabled,
+  //     });
+  //     return;
+  //   }
 
-    const video = videoRef.current;
-    const canvas = document.createElement("canvas");
-    canvas.width = 320;
-    canvas.height = 240;
-    const ctx = canvas.getContext("2d");
+  //   const video = videoRef.current;
+  //   const canvas = document.createElement("canvas");
+  //   canvas.width = 320;
+  //   canvas.height = 240;
+  //   const ctx = canvas.getContext("2d");
 
-    const lightweightDetect = () => {
-      const now = performance.now();
-      if (now - lastLightweightDetectTime.current < 500) { // 2 FPS
-        lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-        return;
-      }
-      lastLightweightDetectTime.current = now;
+  //   const lightweightDetect = () => {
+  //     const now = performance.now();
+  //     if (now - lastLightweightDetectTime.current < 500) { // 2 FPS
+  //       lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
+  //       return;
+  //     }
+  //     lastLightweightDetectTime.current = now;
 
-      if (!ctx || video.readyState < 4) {
-        console.log("[WebcamProvider] Video not ready for lightweight detection:", {
-          ctxExists: !!ctx,
-          videoReadyState: video.readyState,
-        });
-        lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-        return;
-      }
+  //     if (!ctx || video.readyState < 4) {
+  //       console.log("[WebcamProvider] Video not ready for lightweight detection:", {
+  //         ctxExists: !!ctx,
+  //         videoReadyState: video.readyState,
+  //       });
+  //       lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
+  //       return;
+  //     }
 
-      console.log("[WebcamProvider] Sending frame to worker (lightweight detection)...");
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  //     console.log("[WebcamProvider] Sending frame to worker (lightweight detection)...");
+  //     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  //     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
-      const modelTypes = ["hand"];
-      workerRef.current!.postMessage(
-        {
-          type: "detect",
-          data: {
-            imageData,
-            timestamp: now,
-            modelTypes,
-          },
-        },
-        [imageData.data.buffer]
-      );
+  //     const modelTypes = ["hand"];
+  //     workerRef.current!.postMessage(
+  //       {
+  //         type: "detect",
+  //         data: {
+  //           imageData,
+  //           timestamp: now,
+  //           modelTypes,
+  //         },
+  //       },
+  //       [imageData.data.buffer]
+  //     );
 
-      lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-    };
+  //     lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
+  //   };
 
-    lightweightDetect();
+  //   lightweightDetect();
 
-    return () => {
-      if (lightweightFrameId.current) {
-        cancelAnimationFrame(lightweightFrameId.current);
-      }
-    };
-  }, [stream, isHandDetectionEnabled]);
+  //   return () => {
+  //     if (lightweightFrameId.current) {
+  //       cancelAnimationFrame(lightweightFrameId.current);
+  //     }
+  //   };
+  // }, [stream, isHandDetectionEnabled]);
 
   return (
     <WebcamContext.Provider
