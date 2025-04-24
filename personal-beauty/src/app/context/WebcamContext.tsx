@@ -1,10 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// src/app/context/WebcamContext.tsx
+// src/app/context/WebcamContext.tsx (Multi-Worker Version)
 
 "use client";
 
 import React, { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
-import { HandLandmarker, FilesetResolver } from "@mediapipe/tasks-vision";
 import { ViewType, VIEWS } from "../constants/views";
 
 interface HandData {
@@ -43,97 +42,119 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const [error, setError] = useState<string | null>(null);
   const [currentView, setCurrentView] = useState<string>(VIEWS.HOME);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const workerRef = useRef<Worker | null>(null);
+  
+  // Multi-worker refs
+  const handWorkerRef = useRef<Worker | null>(null);
+  const faceWorkerRef = useRef<Worker | null>(null);
+  
   const animationFrameId = useRef<number | null>(null);
-  const lightweightFrameId = useRef<number | null>(null);
   const lastDetectTime = useRef(0);
   const lastPositionBeforeFist = useRef<{ x: number; y: number } | null>(null);
   const smoothPosition = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
-  const ALPHA = 0.6;
+  
+  // Smooth position filter
+  const ALPHA = 0.4;
+  
+  // FPS control
+  const DETECTION_INTERVAL = 80; // ~12 FPS
+  
   const [handData, setHandData] = useState<HandData>({
     isHandDetected: false,
     cursorPosition: { x: 0, y: 0 },
     isFist: false,
     isOpenHand: false,
   });
-  const [isHandDetectionEnabled, setIsHandDetectionEnabled] = useState(true); // Đặt mặc định là false
+  const [isHandDetectionEnabled, setIsHandDetectionEnabled] = useState(true);
   const [isIndexFingerRaised, setIsIndexFingerRaised] = useState(false);
   const [detectionResults, setDetectionResults] = useState<{ [key: string]: any }>({});
+  
+  // Tracking which models should be active for each view
   const modelRequirements: { [key: string]: string[] } = {
     [VIEWS.PERSONAL_COLOR]: ["hand", "face"],
-    [VIEWS.PERSONAL_BODY_TYPE]: ["pose"],
+    [VIEWS.PERSONAL_BODY_TYPE]: ["hand", "face"],
     [VIEWS.HOME]: ["hand"],
     [VIEWS.HAIR_COLOR]: ["hand"],
     [VIEWS.PERSONAL_MAKEUP]: ["hand"],
-    [VIEWS.COSMETIC_SURGERY]: ["face", "pose"],
+    [VIEWS.COSMETIC_SURGERY]: ["face", "hand"],
   };
+  
+  // Worker initialization states
+  const [isHandWorkerInitialized, setIsHandWorkerInitialized] = useState(false);
+  const [isFaceWorkerInitialized, setIsFaceWorkerInitialized] = useState(false);
 
-  // Hàm chỉ kiểm tra ngón trỏ (dùng cho luồng lightweight detection)
+  // Hand landmark detection functions
   const detectIndexFinger = useCallback((landmarks: any[]) => {
     const THRESHOLD = 0.05;
-    const isIndexRaised = landmarks[8].y < landmarks[5].y - THRESHOLD;
-    return isIndexRaised;
+    return landmarks[8].y < landmarks[5].y - THRESHOLD;
   }, []);
 
-  // Hàm kiểm tra cử chỉ tay (dùng cho luồng full detection)
   const detectGesture = useCallback((landmarks: any[]) => {
     const THRESHOLD = 0.1;
 
-    // Kiểm tra nắm tay (fist)
-    const distanceIndex = Math.sqrt(
-      Math.pow(landmarks[8].x - landmarks[5].x, 2) + Math.pow(landmarks[8].y - landmarks[5].y, 2)
-    );
-    const distanceMiddle = Math.sqrt(
-      Math.pow(landmarks[12].x - landmarks[9].x, 2) + Math.pow(landmarks[12].y - landmarks[9].y, 2)
-    );
-    const isFist = distanceIndex < 0.1 && distanceMiddle < 0.1;
+    // Simplified fist detection
+    const isFist = 
+      Math.abs(landmarks[8].y - landmarks[0].y) < 0.1 && 
+      Math.abs(landmarks[12].y - landmarks[0].y) < 0.1;
 
-    // Kiểm tra tay mở (open hand)
+    // Open hand detection
     const isOpenHand =
       landmarks[8].y < landmarks[5].y - THRESHOLD &&
       landmarks[12].y < landmarks[9].y - THRESHOLD &&
       landmarks[16].y < landmarks[13].y - THRESHOLD &&
       landmarks[20].y < landmarks[17].y - THRESHOLD;
 
-    // Kiểm tra ngón trỏ giơ ra
+    // Index finger detection
     const isIndexRaised = landmarks[8].y < landmarks[5].y - THRESHOLD;
 
     return { isFist, isOpenHand, isIndexRaised };
   }, []);
 
-  // Hàm phát hiện cử chỉ tay và vị trí con trỏ (dùng cho luồng full detection)
   const detectFull = useCallback(
     (landmarks: any[]) => {
       const { isFist, isOpenHand, isIndexRaised } = detectGesture(landmarks);
       const indexFingerTip = landmarks[8];
-      const videoWidth = 320;
-      const videoHeight = 240;
+      
+      // Use actual video dimensions
+      const videoWidth = 640;
+      const videoHeight = 480;
       const scaleX = window.innerWidth / videoWidth;
       const scaleY = window.innerHeight / videoHeight;
       const adjustedX = indexFingerTip.x * videoWidth * scaleX;
       const adjustedY = indexFingerTip.y * videoHeight * scaleY;
+      
+      // Constrain to window bounds
       const clampedX = Math.max(0, Math.min(adjustedX, window.innerWidth - 1));
       const clampedY = Math.max(0, Math.min(adjustedY, window.innerHeight - 1));
 
       let currentPosition: { x: number; y: number };
+      
       if (isFist) {
         if (!lastPositionBeforeFist.current) {
           lastPositionBeforeFist.current = smoothPosition.current;
         }
         currentPosition = lastPositionBeforeFist.current;
       } else {
-        // Khởi tạo smoothPosition với giá trị ban đầu
+        // Initialize smooth position on first detection
         if (smoothPosition.current.x === 0 && smoothPosition.current.y === 0) {
           smoothPosition.current = { x: clampedX, y: clampedY };
         }
 
-        // Áp dụng EMA để làm mượt
-        smoothPosition.current.x = ALPHA * clampedX + (1 - ALPHA) * smoothPosition.current.x;
-        smoothPosition.current.y = ALPHA * clampedY + (1 - ALPHA) * smoothPosition.current.y;
+        // Dynamic alpha based on movement speed
+        const distance = Math.sqrt(
+          Math.pow(clampedX - smoothPosition.current.x, 2) + 
+          Math.pow(clampedY - smoothPosition.current.y, 2)
+        );
+        
+        // Faster movement = less smoothing
+        const dynamicAlpha = distance > 100 ? 0.7 : ALPHA;
+
+        // Apply exponential moving average with dynamic alpha
+        smoothPosition.current.x = dynamicAlpha * clampedX + (1 - dynamicAlpha) * smoothPosition.current.x;
+        smoothPosition.current.y = dynamicAlpha * clampedY + (1 - dynamicAlpha) * smoothPosition.current.y;
 
         currentPosition = {
-          x: Math.round(smoothPosition.current.x * 100) / 100,
-          y: Math.round(smoothPosition.current.y * 100) / 100,
+          x: Math.round(smoothPosition.current.x),
+          y: Math.round(smoothPosition.current.y),
         };
         lastPositionBeforeFist.current = null;
       }
@@ -154,7 +175,8 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640 },
-          height: { ideal: 480 }
+          height: { ideal: 480 },
+          frameRate: { ideal: 15 }
         },
       });
       setStream(mediaStream);
@@ -172,6 +194,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     await startStream();
   };
 
+  // Initial stream setup
   useEffect(() => {
     startStream();
     return () => {
@@ -181,6 +204,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     };
   }, []);
 
+  // Connect stream to video element
   useEffect(() => {
     if (stream && videoRef.current) {
       videoRef.current.srcObject = stream;
@@ -190,252 +214,264 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }
   }, [stream]);
 
+  // Initialize Hand worker
   useEffect(() => {
-    workerRef.current = new Worker(new URL("./VisionWorker.ts", import.meta.url));
+    // Create a dedicated worker for hand detection
+    handWorkerRef.current = new Worker(new URL("./HandWorker.ts", import.meta.url));
 
-    workerRef.current.onmessage = (e: MessageEvent) => {
-      const { type, success, error, modelType, results } = e.data;
+    handWorkerRef.current.onmessage = (e: MessageEvent) => {
+      const { type, success, error, results } = e.data;
 
       if (type === "initialized") {
-        if (!success) {
-          setError(`Failed to initialize ${modelType}: ${error}`);
-          console.log("[WebcamProvider] Model initialization failed:", modelType, error);
+        if (success) {
+          console.log("[WebcamProvider] Hand model initialized successfully");
+          setIsHandWorkerInitialized(true);
         } else {
-          console.log("[WebcamProvider] Model initialized successfully:", modelType);
+          setError(`Failed to initialize hand model: ${error}`);
+          console.error("[WebcamProvider] Hand model initialization failed:", error);
         }
       }
 
       if (type === "detectionResult") {
         if (error) {
-          setError(`Detection error: ${error}`);
-
+          console.error("[WebcamProvider] Hand detection error:", error);
           return;
         }
-
-          // Tính thời gian truyền và nhận (tổng thời gian từ lúc gửi đến lúc nhận)
-          // const receiveTime = performance.now();
-          // console.log(`====================> [WebcamProvider] Received detection results at: ${receiveTime}ms, total round-trip time: ${(receiveTime - lastDetectTime.current).toFixed(2)}ms`);
-          
-        // console.log("[WebcamProvider] Detection results received:", results);
-        setDetectionResults(results);
-        if (results.hand && results.hand.landmarks && results.hand.landmarks.length > 0) {
-          const landmarks = results.hand.landmarks[0];
-          //console.log("[WebcamProvider] Hand landmarks detected:", landmarks);
-
+        
+        // Process hand landmarks if available
+        if (results && results.landmarks && results.landmarks.length > 0) {
+          const landmarks = results.landmarks[0];
           const isIndexRaised = detectIndexFinger(landmarks);
-          setIsIndexFingerRaised(isIndexRaised);
-
-          // Kích hoạt lại nếu phát hiện tay (không cần đợi ngón trỏ giơ lên)
-          if (!isHandDetectionEnabled) {
-            //console.log("[WebcamProvider] Hand detected in lightweight mode, enabling hand detection");
-            setIsHandDetectionEnabled(true);
-          }
-
+          
           if (isHandDetectionEnabled) {
-            //console.log("[WebcamProvider] Processing detectFull");
-            const { isHandDetected, cursorPosition, isFist, isOpenHand, isIndexRaised: updatedIndexRaised } = detectFull(landmarks);
-            setIsIndexFingerRaised(updatedIndexRaised);
+            const fullDetection = detectFull(landmarks);
+            
+            // Update hand detection results
+            setIsIndexFingerRaised(fullDetection.isIndexRaised);
             setHandData({
-              isHandDetected,
-              cursorPosition,
-              isFist,
-              isOpenHand,
+              isHandDetected: fullDetection.isHandDetected,
+              cursorPosition: fullDetection.cursorPosition,
+              isFist: fullDetection.isFist,
+              isOpenHand: fullDetection.isOpenHand,
             });
-            // console.log("[WebcamProvider] Updated handData (detectFull):", {
-            //   isHandDetected,
-            //   cursorPosition,
-            //   isFist,
-            //   isOpenHand,
-            //   isIndexRaised: updatedIndexRaised,
-            // });
+            
+            // Update overall detection results
+            setDetectionResults(prev => ({
+              ...prev,
+              hand: results
+            }));
           } else {
-            console.log("[WebcamProvider] Processing detectGesture (lightweight mode)");
             const { isFist, isOpenHand, isIndexRaised: updatedIndexRaised } = detectGesture(landmarks);
+            
+            // Re-enable full detection if hand is detected
             setIsIndexFingerRaised(updatedIndexRaised);
-            setHandData((prev) => ({
+            setIsHandDetectionEnabled(true);
+            
+            setHandData(prev => ({
               ...prev,
               isHandDetected: true,
               isFist,
               isOpenHand,
             }));
+            
+            // Update overall detection results
+            setDetectionResults(prev => ({
+              ...prev,
+              hand: results
+            }));
           }
         } else {
-          //console.log("[WebcamProvider] No hand detected in results:", results.hand || "No hand data");
+          // No hand detected
           setIsIndexFingerRaised(false);
           setHandData({
             isHandDetected: false,
-            cursorPosition: { x: 0, y: 0 },
+            cursorPosition: smoothPosition.current, // Keep last position
             isFist: false,
             isOpenHand: false,
           });
+          
+          // Update overall detection results
+          setDetectionResults(prev => ({
+            ...prev,
+            hand: results
+          }));
         }
-
-      }
-
-      if (type === "cleaned") {
-        console.log("[WebcamProvider] Cleanup completed for model:", modelType);
       }
     };
 
-    workerRef.current.onerror = (error) => {
-      console.error("[WebcamProvider] Worker error:", error);
+    handWorkerRef.current.onerror = (error) => {
+      console.error("[WebcamProvider] Hand worker error:", error);
     };
+
+    // Initialize hand model
+    handWorkerRef.current.postMessage({ type: "initialize" });
 
     return () => {
-      if (workerRef.current) {
-        workerRef.current.postMessage({ type: "cleanup" });
-        workerRef.current.terminate();
-      }
-      if (animationFrameId.current) {
-        cancelAnimationFrame(animationFrameId.current);
-      }
-      if (lightweightFrameId.current) {
-        cancelAnimationFrame(lightweightFrameId.current);
+      if (handWorkerRef.current) {
+        handWorkerRef.current.terminate();
       }
     };
   }, [isHandDetectionEnabled, detectFull, detectGesture, detectIndexFinger]);
 
+  // Initialize Face worker
   useEffect(() => {
-    if (!workerRef.current) return;
+    // Create a dedicated worker for face detection
+    faceWorkerRef.current = new Worker(new URL("./FaceWorker.ts", import.meta.url));
 
-    const requiredModels = modelRequirements[currentView] || ["hand"];
-    requiredModels.forEach((modelType) => {
-      workerRef.current!.postMessage({ type: "initialize", data: { modelType } });
-    });
+    faceWorkerRef.current.onmessage = (e: MessageEvent) => {
+      const { type, success, error, results } = e.data;
 
-    const allModels = ["hand", "face", "pose"];
-    const unusedModels = allModels.filter((model) => !requiredModels.includes(model));
-    unusedModels.forEach((modelType) => {
-      workerRef.current!.postMessage({ type: "cleanup", data: { modelType } });
-    });
+      if (type === "initialized") {
+        if (success) {
+          console.log("[WebcamProvider] Face model initialized successfully");
+          setIsFaceWorkerInitialized(true);
+        } else {
+          setError(`Failed to initialize face model: ${error}`);
+          console.error("[WebcamProvider] Face model initialization failed:", error);
+        }
+      }
 
-    //console.log("[WebcamProvider] Model requirements updated for view:", currentView, requiredModels);
-  }, [currentView]);
+      if (type === "detectionResult") {
+        if (error) {
+          console.error("[WebcamProvider] Face detection error:", error);
+          return;
+        }
+        
+        // Update overall detection results with face data
+        setDetectionResults(prev => ({
+          ...prev,
+          face: results
+        }));
+      }
+    };
 
+    faceWorkerRef.current.onerror = (error) => {
+      console.error("[WebcamProvider] Face worker error:", error);
+    };
 
-  // Luồng phát hiện đầy đủ (full detection) khi isHandDetectionEnabled = true
+    // Initialize face model
+    faceWorkerRef.current.postMessage({ type: "initialize" });
+
+    return () => {
+      if (faceWorkerRef.current) {
+        faceWorkerRef.current.terminate();
+      }
+    };
+  }, []);
+
+  // Detection loop for hand worker
   useEffect(() => {
-    if (!stream || !videoRef.current || !workerRef.current || !isHandDetectionEnabled) {
-      console.log("[WebcamProvider] Detection loop skipped:", {
-        hasStream: !!stream,
-        hasVideoRef: !!videoRef.current,
-        hasWorker: !!workerRef.current,
-        isHandDetectionEnabled
-      });
+    if (!stream || !videoRef.current || !handWorkerRef.current || !isHandWorkerInitialized) {
       return;
     }
 
     const video = videoRef.current;
-    const detect = async () => {
+    const detectHand = async () => {
       const now = performance.now();
-      if (now - lastDetectTime.current < 500) { // 10 FPS
-        animationFrameId.current = requestAnimationFrame(detect);
+      
+      // Limit detection rate
+      if (now - lastDetectTime.current < DETECTION_INTERVAL) {
+        animationFrameId.current = requestAnimationFrame(detectHand);
         return;
       }
       lastDetectTime.current = now;
     
-      if (video.readyState < 4) {
-        console.log("[WebcamProvider] Video not ready for detection:", {
-          videoReadyState: video.readyState,
-        });
-        animationFrameId.current = requestAnimationFrame(detect);
+      if (video.readyState < 2) {
+        animationFrameId.current = requestAnimationFrame(detectHand);
         return;
       }
     
       try {
-        const imageBitmap = await createImageBitmap(video);
-        const modelTypes = modelRequirements[currentView] || ["hand"];
-    
-        workerRef.current!.postMessage(
-          {
-            type: "detect",
-            data: {
-              imageBitmap,
-              timestamp: now,
-              modelTypes,
+        // Only send frames if hand detection needed for current view
+        const currentRequirements = modelRequirements[currentView] || ["hand"];
+        if (currentRequirements.includes("hand")) {
+          const imageBitmap = await createImageBitmap(video);
+          handWorkerRef.current!.postMessage(
+            {
+              type: "detect",
+              data: {
+                imageBitmap,
+                timestamp: now
+              },
             },
-          },
-          [imageBitmap] // chuyển quyền ownership cực nhanh
-        );
+            [imageBitmap]
+          );
+        }
       } catch (err) {
-        console.error("[WebcamProvider] Error creating bitmap:", err);
+        console.error("[WebcamProvider] Error creating bitmap for hand detection:", err);
       }
     
-      animationFrameId.current = requestAnimationFrame(detect);
+      animationFrameId.current = requestAnimationFrame(detectHand);
     };    
 
-    detect();
+    detectHand();
 
     return () => {
       if (animationFrameId.current) {
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [stream, currentView, isHandDetectionEnabled]);
+  }, [stream, currentView, isHandWorkerInitialized, DETECTION_INTERVAL, modelRequirements]);
 
-  // Luồng phát hiện nhẹ (lightweight detection) để kích hoạt lại khi isHandDetectionEnabled = false
-  // useEffect(() => {
-  //   if (!stream || !videoRef.current || !workerRef.current || isHandDetectionEnabled) {
-  //     console.log("[WebcamProvider] Lightweight detection loop skipped:", {
-  //       hasStream: !!stream,
-  //       hasVideoRef: !!videoRef.current,
-  //       hasWorker: !!workerRef.current,
-  //       isHandDetectionEnabled,
-  //     });
-  //     return;
-  //   }
+  // Detection loop for face worker with lower frequency
+  useEffect(() => {
+    if (!stream || !videoRef.current || !faceWorkerRef.current || !isFaceWorkerInitialized) {
+      return;
+    }
 
-  //   const video = videoRef.current;
-  //   const canvas = document.createElement("canvas");
-  //   canvas.width = 320;
-  //   canvas.height = 240;
-  //   const ctx = canvas.getContext("2d");
+    const video = videoRef.current;
+    let faceDetectionFrameId: number | null = null;
+    let lastFaceDetectTime = 0;
+    
+    // Face detection runs at lower frame rate (5 FPS)
+    const FACE_DETECTION_INTERVAL = 200;
+    
+    const detectFace = async () => {
+      const now = performance.now();
+      
+      // Limit detection rate
+      if (now - lastFaceDetectTime < FACE_DETECTION_INTERVAL) {
+        faceDetectionFrameId = requestAnimationFrame(detectFace);
+        return;
+      }
+      lastFaceDetectTime = now;
+    
+      if (video.readyState < 2) {
+        faceDetectionFrameId = requestAnimationFrame(detectFace);
+        return;
+      }
+    
+      try {
+        // Only send frames if face detection needed for current view
+        const currentRequirements = modelRequirements[currentView] || ["hand"];
+        if (currentRequirements.includes("face")) {
+          const imageBitmap = await createImageBitmap(video);
+          faceWorkerRef.current!.postMessage(
+            {
+              type: "detect",
+              data: {
+                imageBitmap,
+                timestamp: now
+              },
+            },
+            [imageBitmap]
+          );
+        }
+      } catch (err) {
+        console.error("[WebcamProvider] Error creating bitmap for face detection:", err);
+      }
+    
+      faceDetectionFrameId = requestAnimationFrame(detectFace);
+    };    
 
-  //   const lightweightDetect = () => {
-  //     const now = performance.now();
-  //     if (now - lastLightweightDetectTime.current < 500) { // 2 FPS
-  //       lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-  //       return;
-  //     }
-  //     lastLightweightDetectTime.current = now;
+    detectFace();
 
-  //     if (!ctx || video.readyState < 4) {
-  //       console.log("[WebcamProvider] Video not ready for lightweight detection:", {
-  //         ctxExists: !!ctx,
-  //         videoReadyState: video.readyState,
-  //       });
-  //       lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-  //       return;
-  //     }
-
-  //     console.log("[WebcamProvider] Sending frame to worker (lightweight detection)...");
-  //     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  //     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-
-  //     const modelTypes = ["hand"];
-  //     workerRef.current!.postMessage(
-  //       {
-  //         type: "detect",
-  //         data: {
-  //           imageData,
-  //           timestamp: now,
-  //           modelTypes,
-  //         },
-  //       },
-  //       [imageData.data.buffer]
-  //     );
-
-  //     lightweightFrameId.current = requestAnimationFrame(lightweightDetect);
-  //   };
-
-  //   lightweightDetect();
-
-  //   return () => {
-  //     if (lightweightFrameId.current) {
-  //       cancelAnimationFrame(lightweightFrameId.current);
-  //     }
-  //   };
-  // }, [stream, isHandDetectionEnabled]);
+    return () => {
+      if (faceDetectionFrameId) {
+        cancelAnimationFrame(faceDetectionFrameId);
+      }
+    };
+  }, [stream, currentView, isFaceWorkerInitialized, modelRequirements]);
 
   return (
     <WebcamContext.Provider
@@ -447,7 +483,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         handData,
         setIsHandDetectionEnabled,
         isIndexFingerRaised,
-        isHandDetectionEnabled, // Truyền ra để đồng bộ
+        isHandDetectionEnabled,
         currentView,
         detectionResults,
         setCurrentView
