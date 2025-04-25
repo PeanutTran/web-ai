@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 // src/components/page/CosmeticSurgery.tsx
 "use client";
 
@@ -14,7 +15,7 @@ import { VIEWS } from "../constants/views";
 import { useLoading } from "../context/LoadingContext";
 
 export default function CosmeticSurgery() {
-  const { stream, videoRef, error: webcamError } = useWebcam();
+  const { stream, error: webcamError, detectionResults, setCurrentView } = useWebcam();
   const [faceSuggestions, setFaceSuggestions] = useState<string[] | null>(null);
 
   const [error, setError] = useState<string | null>(null);
@@ -22,6 +23,10 @@ export default function CosmeticSurgery() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
   const animationFrameId = useRef<number | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const isVideoReady = useRef<boolean>(null);
+  const lastDetectTime = useRef(0);
+
   const loading = useLoading();
   useEffect(() => {
     const initializeFaceLandmarker = async () => {
@@ -70,6 +75,32 @@ export default function CosmeticSurgery() {
   }, []);
 
   useEffect(() => {
+    setCurrentView(VIEWS.COSMETIC_SURGERY);
+  }, [])
+
+  // Kết nối video stream
+  useEffect(() => {
+    if (stream && videoRef.current && !isVideoReady.current) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.play().catch((err) => {
+            console.error("[PersonalColor] Error playing video:", err);
+        });
+        const checkVideoReady = () => {
+            if (
+              videoRef.current &&
+              videoRef.current.readyState >= 4
+            ) {
+                isVideoReady.current = true;
+                loading.setIsLoading(false);
+            }
+        };
+
+        checkVideoReady();
+    }
+  }, [stream]);
+
+
+  useEffect(() => {
     if (
       !isFaceLandmarkerReady ||
       !stream ||
@@ -99,57 +130,6 @@ export default function CosmeticSurgery() {
       }
     };
 
-    const drawingFaceGrid = (landmarks: NormalizedLandmark[]) => {
-      const drawingUtils = new DrawingUtils(ctx);
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_TESSELATION,
-        { color: "#C0C0C070", lineWidth: 1 }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_RIGHT_EYE,
-        { color: "#FF3030" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_RIGHT_EYEBROW,
-        { color: "#FF3030" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_LEFT_EYE,
-        { color: "#30FF30" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_LEFT_EYEBROW,
-        { color: "#30FF30" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_FACE_OVAL,
-        { color: "#E0E0E0" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_LIPS,
-        {
-          color: "#E0E0E0",
-        }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_RIGHT_IRIS,
-        { color: "#FF3030" }
-      );
-      drawingUtils.drawConnectors(
-        landmarks,
-        FaceLandmarker.FACE_LANDMARKS_LEFT_IRIS,
-        { color: "#30FF30" }
-      );
-    };
-
     const detect = async () => {
       if (!faceLandmarkerRef.current) {
         animationFrameId.current = requestAnimationFrame(detect);
@@ -164,33 +144,15 @@ export default function CosmeticSurgery() {
       }
 
       try {
-        const results = await faceLandmarkerRef.current.detectForVideo(
-          video,
-          performance.now()
-        );
-
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        const videoRatio = video.videoWidth / video.videoHeight;
-        const canvasRatio = canvas.width / canvas.height;
-        let drawWidth = canvas.width;
-        let drawHeight = canvas.height;
-        let offsetX = 0;
-        let offsetY = 0;
-
-        if (videoRatio > canvasRatio) {
-          drawHeight = canvas.width / videoRatio;
-          offsetY = (canvas.height - drawHeight) / 2;
-        } else {
-          drawWidth = canvas.height * videoRatio;
-          offsetX = (canvas.width - drawWidth) / 2;
+        const now = performance.now();
+        if (now - lastDetectTime.current < 150) {
+            animationFrameId.current = requestAnimationFrame(detect);
+            return;
         }
+        lastDetectTime.current = now;
 
-        ctx.drawImage(video, offsetX, offsetY, drawWidth, drawHeight);
-        // ctx.rect(0, 0, drawWidth, drawHeight);
-        // ctx.fillStyle = "black";
-        // ctx.fill();
-        if (results.faceLandmarks && results.faceLandmarks.length > 0) {
-          const landmarks = results.faceLandmarks[0];
+        if (detectionResults?.face?.faceLandmarks && detectionResults.face?.faceLandmarks.length > 0) {
+          const landmarks = detectionResults?.face?.faceLandmarks[0];
           analyzeFace(landmarks);
           // drawingFaceGrid(landmarks);
         }
@@ -208,7 +170,7 @@ export default function CosmeticSurgery() {
         cancelAnimationFrame(animationFrameId.current);
       }
     };
-  }, [isFaceLandmarkerReady, stream]);
+  }, [isFaceLandmarkerReady, detectionResults]);
 
   const calculateDistance = (
     point1: NormalizedLandmark,

@@ -74,8 +74,8 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     [VIEWS.PERSONAL_BODY_TYPE]: ["hand", "face"],
     [VIEWS.HOME]: ["hand"],
     [VIEWS.HAIR_COLOR]: ["hand"],
-    [VIEWS.PERSONAL_MAKEUP]: ["hand"],
-    [VIEWS.COSMETIC_SURGERY]: ["face", "hand"],
+    [VIEWS.PERSONAL_MAKEUP]: ["hand", "face"],
+    [VIEWS.COSMETIC_SURGERY]: ["hand", "face"],
   };
   
   // Worker initialization states

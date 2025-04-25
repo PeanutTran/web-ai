@@ -29,9 +29,8 @@ type FacialFeatures = {
 };
 
 export default function PersonalColor() {
-    const { stream, error: webcamError, restartStream } = useWebcam();
+    const { stream, error: webcamError, restartStream, detectionResults, setCurrentView } = useWebcam();
     const { setIsLoading } = useLoading();
-    const { registerElement, unregisterElement } = useHandControl();
     const [error, setError] = useState<string | null>(null);
     const [isFaceLandmarkerReady, setIsFaceLandmarkerReady] = useState(false);
     const [isVideoReady, setIsVideoReady] = useState(false);
@@ -39,12 +38,10 @@ export default function PersonalColor() {
     const [statusMessage, setStatusMessage] = useState("Face Detection Active");
     const [twoFingersProgress, setTwoFingersProgress] = useState(0);
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const faceLandmarkerRef = useRef<FaceLandmarker | null>(null);
     const displayVideoRef = useRef<HTMLVideoElement>(null);
     const animationFrameId = useRef<number | null>(null);
     const videoRenderFrameId = useRef<number | null>(null);
     const [makeupSuggestion, setMakeupSuggestion] = useState<any | null>(null);
-    const isApplyMakeupRef = useRef(true);
     const lastDetectTime = useRef(0);
     
     // Tham chiếu để tối ưu
@@ -53,51 +50,8 @@ export default function PersonalColor() {
     const lastLandmarks = useRef<NormalizedLandmark[] | null>(null);
 
     useEffect(() => {
-        const initializeFaceLandmarker = async () => {
-            try {
-                const filesetResolver = await FilesetResolver.forVisionTasks(
-                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.22-rc.20250304/wasm"
-                );
-                const faceLandmarker = await FaceLandmarker.createFromOptions(
-                    filesetResolver,
-                    {
-                        baseOptions: {
-                            modelAssetPath: `https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task`,
-                            delegate: "GPU",
-                        },
-                        outputFaceBlendshapes: true,
-                        runningMode: "VIDEO",
-                        numFaces: 1,
-                    }
-                );
-
-                faceLandmarkerRef.current = faceLandmarker;
-                setIsFaceLandmarkerReady(true);
-            } catch (err) {
-                console.error(
-                    "[PersonalColor] Error initializing FaceLandmarker:",
-                    err
-                );
-                setError("Failed to initialize face detection.");
-            }
-        };
-
-        initializeFaceLandmarker();
-
-        return () => {
-            if (faceLandmarkerRef.current) {
-                faceLandmarkerRef.current.close();
-                faceLandmarkerRef.current = null;
-            }
-            setIsFaceLandmarkerReady(false);
-            if (animationFrameId.current) {
-                cancelAnimationFrame(animationFrameId.current);
-            }
-            if (videoRenderFrameId.current) {
-                cancelAnimationFrame(videoRenderFrameId.current);
-            }
-        };
-    }, []);
+        setCurrentView(VIEWS.PERSONAL_MAKEUP);
+    }, [])
 
     function analyzeFacialFeatures(
         landmarks: NormalizedLandmark[]
@@ -263,7 +217,7 @@ export default function PersonalColor() {
             displayVideoRef.current.play().catch((err) => {
                 console.error("[PersonalColor] Error playing video:", err);
             });
-
+            console.log(displayVideoRef.current.readyState);
             const checkVideoReady = () => {
                 if (
                     displayVideoRef.current &&
@@ -584,27 +538,19 @@ export default function PersonalColor() {
                 cancelAnimationFrame(videoRenderFrameId.current);
             }
         };
-    }, [stream]);
+    }, [stream, restartStream]);
 
     // Sửa lỗi: Tách việc phát hiện khuôn mặt thành useEffect riêng
     useEffect(() => {
         if (
-            !isFaceLandmarkerReady ||
             !stream ||
             !displayVideoRef.current ||
             !isFaceDetectionActive
         ) {
             return;
         }
-        
-        const video = displayVideoRef.current;
 
         const detect = async () => {
-            if (!faceLandmarkerRef.current) {
-                animationFrameId.current = requestAnimationFrame(detect);
-                return;
-            }
-
             try {
                 const now = performance.now();
                 if (now - lastDetectTime.current < 150) {
@@ -613,8 +559,7 @@ export default function PersonalColor() {
                 }
 
                 lastDetectTime.current = now;
-                
-                const results = faceLandmarkerRef.current.detectForVideo(video, now);
+                const results = detectionResults?.face;
                 if (results.faceLandmarks && results.faceLandmarks.length > 0) {
                     const landmarks = results.faceLandmarks[0];
                     
@@ -649,7 +594,7 @@ export default function PersonalColor() {
                 cancelAnimationFrame(animationFrameId.current);
             }
         };
-    }, [isFaceLandmarkerReady, stream, isFaceDetectionActive]);
+    }, [detectionResults, stream, isFaceDetectionActive]);
 
     return (
         <AnalysisLayout
