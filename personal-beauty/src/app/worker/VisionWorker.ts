@@ -33,11 +33,13 @@ const modelConfigs: { [key: string]: any } = {
     class: ImageSegmenter,
     options: {
       baseOptions: {
-        modelAssetPath: `/models/hair_segmenter.tflite`,
-        delegate: "GPU",
+          modelAssetPath:
+              "/models/hair_segmenter.tflite",
+          delegate: "GPU"
       },
       runningMode: "VIDEO",
       outputCategoryMask: true,
+      outputConfidenceMasks: false
     },
   },
   pose: {
@@ -137,7 +139,16 @@ const handleDetect = async () => {
       for (const modelType of otherModels) {
         if (models.has(modelType)) {
           console.log(`[VisionWorker] Detecting ${modelType}...`);
-          results[modelType] = await models.get(modelType).detectForVideo(imageBitmap, timestamp);
+          if (modelType === "hair") {
+            const hairRaw = await models.get(modelType).segmentForVideo(imageBitmap, timestamp);
+            if (hairRaw?.categoryMask) {
+              const mask = hairRaw.categoryMask;
+              const maskData = mask.getAsUint8Array();
+              results[modelType] = { data: maskData, width: mask.width, height: mask.height, timestamp };
+            }
+          } else {
+            results[modelType] = await models.get(modelType).detectForVideo(imageBitmap, timestamp);
+          }
         }
       }
     }

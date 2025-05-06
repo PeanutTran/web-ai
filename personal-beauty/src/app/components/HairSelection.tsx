@@ -21,7 +21,7 @@ const HairSelection: React.FC<HairSelectionProps> = ({
   handleScrollDown
 }) => {
   return (
-    <div className="md:w-2/12 bg-white p-4 md:p-6 rounded-xl shadow-md flex flex-col max-h-[calc(100vh-64px)] overflow-hidden">
+    <div className="md:w-2/12 bg-white p-4 md:p-6 rounded-xl shadow-md flex flex-col max-h-[calc(100vh-128px)] overflow-hidden">
     <button
       onClick={handleScrollUp}
       ref={(el) => {
