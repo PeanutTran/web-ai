@@ -38,6 +38,8 @@ export default function HairColor() {
   const [filterComplete, setFilterComplete] = useState(false);
   const landmarkHistoryRef = useRef<any>([]);
   const [noFaceDetectedDuration, setNoFaceDetectedDuration] = useState<number>(0);
+  const lastDetectedRef = useRef<number>(null);
+  const captureRef = useRef<any>(null);
   const [progress, setProgress] = useState<number>(0);
   const lastDrawTime = useRef(0);
   const biggerPer = useRef(0);
@@ -51,28 +53,15 @@ export default function HairColor() {
   const [hairColorList, _setHairColorList] = useState<any[]>([
     { key: "0", name: "Jet Black", rgb: [10, 10, 10] },
     { key: "1", name: "Soft Black", rgb: [40, 30, 30] },
-    { key: "2", name: "Dark Brown", rgb: [60, 40, 30] },
-    { key: "3", name: "Chestnut Brown", rgb: [90, 60, 40] },
-    { key: "4", name: "Chocolate Brown", rgb: [120, 80, 60] },
-    { key: "5", name: "Toffee Brown", rgb: [150, 100, 80] },
-    { key: "6", name: "Caramel Brown", rgb: [170, 120, 80] },
-    { key: "7", name: "Light Brown", rgb: [200, 140, 90] },
-    { key: "8", name: "Golden Bronze", rgb: [220, 160, 60] },
-    { key: "9", name: "Golden Yellow", rgb: [255, 197, 0] },
-    { key: "10", name: "Copper Orange", rgb: [255, 130, 60] },
-    { key: "11", name: "Auburn", rgb: [170, 60, 60] },
-    { key: "12", name: "Burgundy", rgb: [120, 30, 50] },
-    { key: "13", name: "Mahogany", rgb: [160, 40, 90] },
-    { key: "14", name: "Scarlet Red", rgb: [220, 40, 60] },
-    { key: "15", name: "Magenta", rgb: [180, 60, 120] },
-    { key: "16", name: "Ash Gray", rgb: [180, 180, 180] },
-    { key: "17", name: "Platinum Blonde", rgb: [245, 245, 245] },
-    { key: "18", name: "Olive Green", rgb: [100, 120, 90] },
-    { key: "19", name: "Cool Gray", rgb: [130, 130, 130] },
+    { key: "2", name: "Dark Red", rgb: [60, 40, 30] },
+    { key: "3", name: "Soft Blue", rgb: [90, 60, 40] },
+    { key: "4", name: "Dark Green", rgb: [120, 80, 60] },
   ]);
-  const [filterHair, setSelectedHair] = useState<any>(null);
+  const [filterHair, setSelectedHair] = useState<string>("0");
   const scrollByAmount = 480;
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const buttonRefreshRef = useRef<HTMLButtonElement | null>(null);
+
   const { registerElement, unregisterElement, isHandDetectionEnabled } = useHandControl();
   const isRegistered = useRef(false);
 
@@ -91,7 +80,15 @@ export default function HairColor() {
         unregisterElement(button);
       }
     });
-  
+    if (buttonRefreshRef.current) {
+      if (isHandDetectionEnabled && !isRegistered.current) {
+        buttonRefreshRef.current!.classList.add("hoverable");
+        registerElement(buttonRefreshRef.current!);
+      } else if (!isHandDetectionEnabled && isRegistered.current) {
+        buttonRefreshRef.current!.classList.remove("hoverable");
+        unregisterElement(buttonRefreshRef.current!);
+      }
+    }
     isRegistered.current = isHandDetectionEnabled;
   
     return () => {
@@ -101,6 +98,10 @@ export default function HairColor() {
           button.classList.remove("hoverable");
           unregisterElement(button);
         });
+        if (buttonRefreshRef.current) {
+          buttonRefreshRef.current!.classList.remove("hoverable");
+        }
+        unregisterElement(buttonRefreshRef.current!);
         isRegistered.current = false;
       }
     };
@@ -161,6 +162,9 @@ export default function HairColor() {
   const onChangeSelectHair = useCallback((color: any) => {
     selectedHairColor.current = color.rgb;
     setSelectedHair(color.key);
+    if  (lastDetectedRef.current) {
+      handleResult(lastDetectedRef.current, color.key);
+    }
   }, []);
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -537,15 +541,42 @@ export default function HairColor() {
       [filterHair]
   );
 
-  const handleResult = (results: any) => {
+  const getImageSrc = (key: string) => {
+    const store = {
+      "0": "/hair2.png",
+      "1": "/hair2.1.png",
+      "2": "/hair2.2.png",
+      "3": "/hair2.3.png",
+      "4": "/hair2.4.png",
+    } as any;
+    return store[key];
+  }
+
+  const handleResult = (results: any, filterHair?: any) => {
     if  (!results?.face?.faceLandmarks) {
       return;
     }
     const faceLandmarks = results?.face?.faceLandmarks?.[0];
-    const point = faceLandmarks?.[10];
-    const overlayImage = new Image();
-    overlayImage.src = "/hair1.png";
+    if (!filterHair) {
+      lastDetectedRef.current = results;
+    } else {
+      ctxRef.current.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      const capImage = new Image();
+      capImage.src = captureRef.current;
+      capImage.onload = () => {
+        ctxRef.current.drawImage(capImage, 0, 0, canvasRef.current!.width, canvasRef.current!.height);
+        calculateImage(faceLandmarks, filterHair);
+      }
+      return;
+    }
+    calculateImage(faceLandmarks, filterHair);
+  }
 
+  const calculateImage = (faceLandmarks?: any, filterHair?: any) => {
+    const point = faceLandmarks?.[8];
+    const overlayImage = new Image();
+    overlayImage.src = getImageSrc(filterHair || "0");
+    console.log("overlayImage.src", overlayImage.src);
     overlayImage.onload = () => {
       const canvas = canvasRef.current;
       const ctx = ctxRef.current;
@@ -565,17 +596,17 @@ export default function HairColor() {
       const faceWidth = Math.abs(leftCheek.x - rightCheek.x) * canvas.width;
 
       // Calculate scale
-      const baseScale = faceWidth / 462;
-      const additionalScale = 1.15;
+      const baseScale = faceWidth / 720;
+      const additionalScale = 1.32;
       const finalScale = baseScale * additionalScale;
-      const imageWidth = 462 * finalScale;
-      const imageHeight = 416 * finalScale;
+      const imageWidth = 720 * finalScale;
+      const imageHeight = 852 * finalScale;
 
       // Calculate position
       const x = point.x * canvas.width;
       const y = point.y * canvas.height;
       const drawX = x - imageWidth / 2;
-      const drawY = y - imageHeight / 2 - imageHeight * 0.2;
+      const drawY = y - imageHeight / 2 - imageHeight * 0.15;
 
       // Calculate rotation angle based on cheek landmarks
       const deltaY = rightCheek.y - leftCheek.y;
@@ -597,6 +628,8 @@ export default function HairColor() {
       ctx.restore();
 
       setFilterComplete(true);
+      setStatusMessage("Analysis completed!");
+      setProgress(100);
     };
   }
 
@@ -615,6 +648,7 @@ export default function HairColor() {
     if (ctxRef.current && canvasRef.current) {
       ctxRef.current.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
       ctxRef.current.drawImage(displayVideoRef.current, 0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      captureRef.current = canvasRef.current.toDataURL("image/png");
       const imageBitmap = await createImageBitmap(displayVideoRef.current!);
       const now = performance.now();
       workerRef.current!.postMessage(
@@ -635,7 +669,8 @@ export default function HairColor() {
       () => (
           <>
               <button
-                  className={`bg-pink-500 text-white px-12 py-6 rounded-lg text-3xl hover:bg-pink-600 transition relative`}
+                  className={`bg-pink-500 text-white px-12 py-6 rounded-lg text-3xl hover:bg-pink-600 transition relative opacity-0 ${filterComplete ? "opacity-100" : ""}`}
+                  ref={(el) => { buttonRefreshRef.current = el; }}
                   onClick={() => {
                     resetCountdown();
                     ctxRef.current.clearRect(0, 0, canvasRef.current!.width, canvasRef.current!.height);
@@ -649,7 +684,7 @@ export default function HairColor() {
               </button>
           </>
       ),
-      []
+      [filterComplete]
   );
 
   return (
@@ -667,7 +702,7 @@ export default function HairColor() {
           statusMessage={statusMessage}
           countdownActive={countdownActive}
           countdownValue={countdownValue}
-          actionButtons={filterComplete ? actionButtons :  undefined}
+          actionButtons={actionButtons}
           progress={progress}
       />
     </div>
