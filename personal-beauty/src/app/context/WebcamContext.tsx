@@ -35,6 +35,7 @@ interface WebcamContextType {
     currentView: string;
     setCurrentView: (view: any) => void;
     cursorRef: RefObject<HTMLDivElement>;
+    workerRef: RefObject<Worker | null>;
 }
 
 const WebcamContext = createContext<WebcamContextType | undefined>(undefined);
@@ -80,7 +81,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({
         [VIEWS.PERSONAL_COLOR]: ["hand", "face"],
         [VIEWS.PERSONAL_BODY_TYPE]: ["hand", "pose"],
         [VIEWS.HOME]: ["hand"],
-        [VIEWS.HAIR_COLOR]: ["hand", "hair"],
+        [VIEWS.HAIR_COLOR]: ["hand"],
         [VIEWS.PERSONAL_MAKEUP]: ["hand", "face"],
         [VIEWS.COSMETIC_SURGERY]: ["hand", "face"],
     };
@@ -459,6 +460,7 @@ export const WebcamProvider: React.FC<{ children: React.ReactNode }> = ({
                 detectionResults,
                 setCurrentView,
                 cursorRef: cursorRef as any,
+                workerRef,
             }}
         >
             {children}

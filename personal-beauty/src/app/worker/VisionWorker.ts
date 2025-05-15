@@ -195,6 +195,19 @@ self.onmessage = async (e: MessageEvent) => {
     }
   }
 
+  if (type === "detectHair") {
+    if (!filesetResolver) {
+      filesetResolver = await FilesetResolver.forVisionTasks("/wasm");
+    }
+    const results: { [key: string]: any } = {};
+    const { imageBitmap, timestamp, modelTypes } = data;
+    const { class: ModelClass, options } = modelConfigs[modelTypes];
+    models.set(modelTypes, await ModelClass.createFromOptions(filesetResolver, options));
+    results[modelTypes] = await models.get(modelTypes).detectForVideo(imageBitmap, timestamp);
+    self.postMessage({ type: "detectionResult", results });
+    return;
+  }
+
   if (type === "detect") {
     const { imageBitmap, timestamp, modelTypes } = data;
     if (frameQueue.length >= MAX_QUEUE_SIZE) {
